@@ -5,53 +5,61 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 from werkzeug.utils import secure_filename
+from config import Config
+from extensions import db, login_manager, migrate
+from models import *
 from supabase_storage import supabase_storage
 from modules.transcription import TranscriptionModule
 from modules.summarizer_module import SummarizerModule
 from modules.action_item_module import ActionItemModule
 from modules.sentiment_module import SentimentModule
 from modules.translation_module import TranslationModule
+from modules.live_transcription_module import live_transcriber
 
-# Initialize app
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# Initialize AI modules
+db.init_app(app)
+login_manager.init_app(app)
+login_manager.login_view = 'login_page'
+migrate.init_app(app, db)
+
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
 asr = TranscriptionModule()
 summarizer = SummarizerModule()
 action_extractor = ActionItemModule()
 sentiment_analyzer = SentimentModule()
 translator = TranslationModule()
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Store active live sessions
 active_sessions = {}
 
-# ========== BEFORE REQUEST HANDLER ==========
 @app.before_request
 def before_request():
-    """Handle route permissions"""
     public_routes = ['/', '/index', '/home', '/login', '/signup', 
                      '/api/login', '/api/signup', '/api/contact', '/static']
-
+  
     for route in public_routes:
         if request.path.startswith(route):
             return None
-
+    
     if request.path.startswith('/api/'):
         if not session.get('user_id'):
             return jsonify({"success": False, "error": "Authentication required"}), 401
         return None
-
+    
     if not session.get('user_id'):
         return redirect(url_for('login_page'))
     
     return None
 
-# ========== AUTH DECORATOR ==========
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -72,35 +80,28 @@ def get_current_user():
     user_id = session.get('user_id')
     return db.session.get(User, user_id) if user_id else None
 
-# ========== AUTH ROUTES ==========
 @app.route("/")
 def root():
-    """Landing page - always shows index.html"""
     return render_template("index.html")
 
 @app.route("/index")
 def index_redirect():
-    """Redirect /index to root"""
     return redirect(url_for('root'))
 
 @app.route("/home")
 def home_redirect():
-    """Redirect /home to root"""
     return redirect(url_for('root'))
 
 @app.route("/login")
 def login_page():
-    """Login page"""
     return render_template("login.html")
 
 @app.route("/signup")
 def signup_page():
-    """Signup page"""
     return render_template("signup.html")
 
 @app.route("/api/login", methods=["POST"])
 def api_login():
-    """Handle login request"""
     data = request.get_json()
     email = data.get('email')
     password = data.get('password')
@@ -129,7 +130,6 @@ def api_login():
 
 @app.route("/api/signup", methods=["POST"])
 def api_signup():
-    """Handle signup request"""
     data = request.get_json()
     
     first_name = data.get('firstName', '')
@@ -140,22 +140,19 @@ def api_signup():
     security_pin = data.get('securityPin', '')
     use_case = data.get('useCase', 'work')
     newsletter = data.get('newsletter', False)
-
+    
     username = email.split('@')[0]
     full_name = f"{first_name} {last_name}".strip()
     
-    # Validate required fields
     if not first_name or not last_name or not email or not password:
         return jsonify({"success": False, "error": "All fields are required"}), 400
     
-    # Validate email format
     if '@' not in email or '.' not in email:
         return jsonify({"success": False, "error": "Invalid email format"}), 400
     
-    # Validate password length
     if len(password) < 6:
         return jsonify({"success": False, "error": "Password must be at least 6 characters"}), 400
-
+    
     if User.query.filter_by(email=email).first():
         return jsonify({"success": False, "error": "Email already registered"}), 400
     
@@ -173,6 +170,20 @@ def api_signup():
         )
         user.set_password(password)
         
+        settings = UserSettings(
+            user=user,
+            email_notifications=newsletter,
+            desktop_notifications=True,
+            theme='dark',
+            sidebar_collapsed=False,
+            security_level=security_level,
+            security_pin=security_pin if security_pin else None
+        )
+        
+        db.session.add(user)
+        db.session.add(settings)
+        db.session.commit()
+        
         logger.info(f"New user registered: {email}")
         
         return jsonify({
@@ -188,14 +199,11 @@ def api_signup():
 
 @app.route("/api/logout", methods=["POST"])
 def api_logout():
-    """Handle logout request"""
     session.clear()
     return jsonify({"success": True, "message": "Logged out successfully"})
 
-# ========== CONTACT FORM API ==========
 @app.route("/api/contact", methods=["POST"])
 def api_contact():
-    """Handle contact form submission"""
     data = request.get_json()
     
     name = data.get('name')
@@ -203,95 +211,80 @@ def api_contact():
     company = data.get('company')
     interest = data.get('interest')
     message = data.get('message')
-
+    
     if not name or not email or not message:
         return jsonify({"success": False, "error": "Please fill in all required fields"}), 400
-
+    
     logger.info(f"Contact form submission from {name} ({email}) - Interest: {interest}")
- 
+    
     return jsonify({
         "success": True,
         "message": "Thank you for contacting us! We'll get back to you soon."
     })
 
-# ========== PAGE ROUTES ==========
-@app.route("/Dashboard")
+@app.route("/dashboard")
 @login_required
 def dashboard():
-    """Dashboard page"""
     return render_template("dashboard.html")
 
-@app.route("/Upload-Transcribe")
+@app.route("/upload-transcribe")
 @login_required
 def upload_transcribe():
-    """Upload and transcribe page"""
     return render_template("upload_transcribe.html")
 
-@app.route("/Live-Transcription")
+@app.route("/live-transcription")
 @login_required
 def live_transcription():
-    """Live transcription page"""
     return render_template("live_transcription.html")
 
-@app.route("/Summarization")
+@app.route("/summarization")
 @login_required
 def summarization_page():
-    """Summarization page"""
     return render_template("summarization.html")
 
-@app.route("/My-Tasks")
+@app.route("/my-tasks")
 @login_required
 def my_tasks_page():
-    """My tasks page"""
     return render_template("my_tasks.html")
 
-@app.route("/Sentiment-Analysis")
+@app.route("/sentiment-analysis")
 @login_required
 def sentiment_page():
-    """Sentiment analysis page"""
     return render_template("sentiment_analysis.html")
 
-@app.route("/Speaker-Identification")
+@app.route("/speaker-identification")
 @login_required
 def speaker_identification():
-    """Speaker identification page"""
     return render_template("speaker_identification.html")
 
-@app.route("/Translation")
+@app.route("/translation")
 @login_required
 def translation_page():
-    """Translation page"""
     return render_template("translation.html")
 
-@app.route("/Files-History")
+@app.route("/files-history")
 @login_required
 def files_history():
-    """Files history page"""
     return render_template("files_history.html")
 
-@app.route("/Analytics")
+@app.route("/analytics")
 @login_required
 def analytics_page():
-    """Analytics page"""
     return render_template("analytics.html")
 
-@app.route("/Calendar")
+@app.route("/calendar")
 @login_required
 def calendar_page():
-    """Calendar page"""
     return render_template("calendar.html")
 
-@app.route("/Profile")
+@app.route("/profile")
 @login_required
 def profile_page():
-    """Profile page"""
     return render_template("profile.html")
 
-# ========== USER PROFILE API ==========
 @app.route("/api/user/profile", methods=["GET"])
 @api_login_required
 def get_user_profile():
-    """Get user profile"""
     user = get_current_user()
     settings = user.settings
     
@@ -310,7 +303,6 @@ def get_user_profile():
 @app.route("/api/user/profile", methods=["PUT"])
 @api_login_required
 def update_user_profile():
-    """Update user profile"""
     data = request.get_json()
     user = get_current_user()
     
@@ -325,13 +317,13 @@ def update_user_profile():
             return jsonify({"success": False, "error": "Email in use"}), 400
         user.email = data['email']
         session['user_email'] = data['email']
-
+    
+    db.session.commit()
     return jsonify({"success": True, "user": user.to_dict()})
 
 @app.route("/api/user/settings", methods=["PUT"])
 @api_login_required
 def update_user_settings():
-    """Update user settings"""
     data = request.get_json()
     user = get_current_user()
     settings = user.settings
@@ -344,14 +336,13 @@ def update_user_settings():
         settings.theme = data['theme']
     if 'sidebar_collapsed' in data:
         settings.sidebar_collapsed = data['sidebar_collapsed']
-
+    
+    db.session.commit()
     return jsonify({"success": True})
 
-# ========== TRANSCRIPTION API ==========
 @app.route("/api/transcribe", methods=["POST"])
 @api_login_required
 def transcribe():
-    """Handle audio transcription"""
     if 'audio' not in request.files:
         return jsonify({"success": False, "error": "No audio file"}), 400
     
@@ -360,39 +351,31 @@ def transcribe():
     if audio.filename == '':
         return jsonify({"success": False, "error": "No file selected"}), 400
     
-    # Get language preference
     language = request.form.get('language', 'auto')
     
-    # Read file data
     audio_data = audio.read()
     filename = secure_filename(audio.filename)
     user_id = session['user_id']
     
-    # Save temporarily
     temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f'temp_{filename}')
     with open(temp_path, 'wb') as f:
         f.write(audio_data)
     
     try:
-        # Transcribe using AssemblyAI
         language_code = None if language == 'auto' else language
         transcript = asr.transcribe_file(temp_path, language_code=language_code)
         
-        # Upload to Supabase
         audio_key, audio_url = supabase_storage.upload_audio(audio_data, filename, user_id)
         transcript_key, transcript_url = supabase_storage.upload_transcript(transcript, filename, user_id)
         
-        # Clean up temp file
         if os.path.exists(temp_path):
             os.remove(temp_path)
         
-        # Calculate stats
         word_count = transcript['metadata']['total_words']
         speaker_count = transcript['metadata']['speaker_count']
         detected_language = transcript['metadata']['language']
         language_name = transcript['metadata']['language_name']
         
-        # Save to database
         db_transcript = Transcript(
             user_id=user_id,
             filename=filename,
@@ -405,7 +388,10 @@ def transcribe():
             transcript_key=transcript_key,
             transcript_data=transcript
         )
-  
+        
+        db.session.add(db_transcript)
+        db.session.commit()
+        
         return jsonify({
             "success": True,
             "transcript": transcript,
@@ -426,7 +412,6 @@ def transcribe():
 @app.route("/api/transcripts", methods=["GET"])
 @api_login_required
 def get_transcripts():
-    """Get all transcripts for user"""
     user_id = session['user_id']
     transcripts = Transcript.query.filter_by(user_id=user_id)\
         .order_by(Transcript.created_at.desc()).all()
@@ -448,7 +433,6 @@ def get_transcripts():
 @app.route("/api/transcripts/<int:transcript_id>", methods=["GET"])
 @api_login_required
 def get_transcript(transcript_id):
-    """Get specific transcript"""
     transcript = Transcript.query.get_or_404(transcript_id)
     
     if transcript.user_id != session['user_id']:
@@ -466,7 +450,6 @@ def get_transcript(transcript_id):
 @app.route("/api/transcripts/<int:transcript_id>", methods=["PUT"])
 @api_login_required
 def update_transcript(transcript_id):
-    """Update transcript title"""
     data = request.get_json()
     transcript = Transcript.query.get_or_404(transcript_id)
     
@@ -482,25 +465,271 @@ def update_transcript(transcript_id):
 @app.route("/api/transcripts/<int:transcript_id>", methods=["DELETE"])
 @api_login_required
 def delete_transcript(transcript_id):
-    """Delete transcript"""
     transcript = Transcript.query.get_or_404(transcript_id)
     
     if transcript.user_id != session['user_id']:
         return jsonify({"success": False, "error": "Unauthorized"}), 403
     
-    # Delete from Supabase storage
     if transcript.audio_key:
         supabase_storage.delete_file(transcript.audio_key)
     if transcript.transcript_key:
         supabase_storage.delete_file(transcript.transcript_key)
     
+    db.session.delete(transcript)
+    db.session.commit()
+    
     return jsonify({"success": True})
 
-# ========== SUMMARIZATION API ==========
+@app.route("/api/live/devices", methods=["GET"])
+@api_login_required
+def get_audio_devices():
+    try:
+        devices = live_transcriber.list_audio_devices()
+        return jsonify({
+            "success": True,
+            "devices": devices
+        })
+    except Exception as e:
+        logger.error(f"Error getting audio devices: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/live/start", methods=["POST"])
+@api_login_required
+def start_live_session():
+    data = request.get_json()
+    session_name = data.get('session_name', 'Live Recording')
+    language = data.get('language', 'auto')
+    device_index = data.get('device_index')
+    
+    user_id = session['user_id']
+    
+    try:
+        db_session = LiveSession(
+            user_id=user_id,
+            session_name=session_name,
+            status='active',
+            detected_language=language
+        )
+        db.session.add(db_session)
+        db.session.commit()
+        
+        def on_partial(data):
+            if db_session.id in active_sessions:
+                active_sessions[db_session.id]['partial'] = data
+        
+        def on_final(data):
+            with app.app_context():
+                session_record = LiveSession.query.get(db_session.id)
+                if session_record:
+                    current_transcript = session_record.transcript_data or []
+                    current_transcript.append(data)
+                    session_record.transcript_data = current_transcript
+                    session_record.word_count += data.get('words', 0)
+                    db.session.commit()
+        
+        def on_error(error):
+            logger.error(f"Live transcription error: {error}")
+        
+        session_id = live_transcriber.start_session(
+            session_id=db_session.id,
+            language=language,
+            on_partial=on_partial,
+            on_final=on_final,
+            on_error=on_error,
+            device_index=device_index
+        )
+        
+        if not session_id:
+            raise Exception("Failed to start session")
+        
+        active_sessions[db_session.id] = {
+            'user_id': user_id,
+            'started_at': datetime.now().isoformat(),
+            'partial': None
+        }
+        
+        return jsonify({
+            "success": True,
+            "session_id": db_session.id,
+            "message": "Live transcription started"
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to start live session: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/live/stop/<int:session_id>", methods=["POST"])
+@api_login_required
+def stop_live_session(session_id):
+    try:
+        result = live_transcriber.stop_session()
+        
+        db_session = LiveSession.query.get_or_404(session_id)
+        
+        if db_session.user_id != session['user_id']:
+            return jsonify({"success": False, "error": "Unauthorized"}), 403
+        
+        db_session.status = 'completed'
+        db_session.ended_at = datetime.utcnow()
+        db_session.duration = result.get('duration', db_session.duration)
+        db_session.speaker_count = result.get('speakers', 0)
+        
+        if result.get('detected_language'):
+            db_session.detected_language = result.get('detected_language')
+        
+        db.session.commit()
+        
+        if session_id in active_sessions:
+            del active_sessions[session_id]
+        
+        return jsonify({
+            "success": True,
+            "session": db_session.to_dict(),
+            "stats": result,
+            "message": "Session stopped"
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to stop session: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/live/pause/<int:session_id>", methods=["POST"])
+@api_login_required
+def pause_live_session(session_id):
+    try:
+        live_transcriber.pause_session()
+        
+        db_session = LiveSession.query.get_or_404(session_id)
+        if db_session.user_id != session['user_id']:
+            return jsonify({"success": False, "error": "Unauthorized"}), 403
+        
+        db_session.status = 'paused'
+        db.session.commit()
+        
+        return jsonify({"success": True, "message": "Session paused"})
+        
+    except Exception as e:
+        logger.error(f"Failed to pause session: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/live/resume/<int:session_id>", methods=["POST"])
+@api_login_required
+def resume_live_session(session_id):
+    try:
+        live_transcriber.resume_session()
+        
+        db_session = LiveSession.query.get_or_404(session_id)
+        if db_session.user_id != session['user_id']:
+            return jsonify({"success": False, "error": "Unauthorized"}), 403
+        
+        db_session.status = 'active'
+        db.session.commit()
+        
+        return jsonify({"success": True, "message": "Session resumed"})
+        
+    except Exception as e:
+        logger.error(f"Failed to resume session: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/live/stats/<int:session_id>", methods=["GET"])
+@api_login_required
+def get_live_stats(session_id):
+    try:
+        db_session = LiveSession.query.get_or_404(session_id)
+        if db_session.user_id != session['user_id']:
+            return jsonify({"success": False, "error": "Unauthorized"}), 403
+        
+        stats = live_transcriber.get_session_stats()
+        
+        partial = None
+        if session_id in active_sessions:
+            partial = active_sessions[session_id].get('partial')
+        
+        return jsonify({
+            "success": True,
+            "stats": stats,
+            "partial": partial,
+            "status": db_session.status
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get stats: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/live/sessions", methods=["GET"])
+@api_login_required
+def get_live_sessions():
+    user_id = session['user_id']
+    
+    sessions = LiveSession.query.filter_by(user_id=user_id)\
+        .order_by(LiveSession.created_at.desc()).all()
+    
+    return jsonify({
+        "success": True,
+        "sessions": [s.to_dict() for s in sessions]
+    })
+
+@app.route("/api/live/session/<int:session_id>", methods=["GET"])
+@api_login_required
+def get_live_session(session_id):
+    session_record = LiveSession.query.get_or_404(session_id)
+    
+    if session_record.user_id != session['user_id']:
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    
+    return jsonify({
+        "success": True,
+        "session": {
+            **session_record.to_dict(),
+            "full_transcript": session_record.transcript_data
+        }
+    })
+
+@app.route("/api/live/session/<int:session_id>", methods=["PUT"])
+@api_login_required
+def update_live_session(session_id):
+    data = request.get_json()
+    
+    session_record = LiveSession.query.get_or_404(session_id)
+    
+    if session_record.user_id != session['user_id']:
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    
+    if 'session_name' in data:
+        session_record.session_name = data['session_name']
+        db.session.commit()
+    
+    return jsonify({"success": True, "session": session_record.to_dict()})
+
+@app.route("/api/live/session/<int:session_id>", methods=["DELETE"])
+@api_login_required
+def delete_live_session(session_id):
+    session_record = LiveSession.query.get_or_404(session_id)
+    
+    if session_record.user_id != session['user_id']:
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    
+    db.session.delete(session_record)
+    db.session.commit()
+    
+    return jsonify({"success": True, "message": "Session deleted"})
+
+@app.route("/api/live/switch-speaker", methods=["POST"])
+@api_login_required
+def switch_speaker():
+    data = request.get_json()
+    speaker_name = data.get('speaker', 'Speaker B')
+    
+    live_transcriber.switch_speaker(speaker_name)
+    
+    return jsonify({
+        "success": True,
+        "message": f"Switched to {speaker_name}"
+    })
+
 @app.route("/api/summarize", methods=["POST"])
 @api_login_required
 def summarize():
-    """Generate summary from transcript"""
     data = request.get_json()
     transcript_text = data.get("transcript", "")
     summary_type = data.get("summary_type", "executive")
@@ -523,7 +752,9 @@ def summarize():
                 length=length,
                 word_count=result['metadata']['word_count']
             )
-
+            
+            db.session.add(summary)
+            db.session.commit()
             
             return jsonify({
                 "success": True,
@@ -542,7 +773,6 @@ def summarize():
 @app.route("/api/summaries", methods=["GET"])
 @api_login_required
 def get_summaries():
-    """Get all summaries for user"""
     user_id = session['user_id']
     summaries = Summary.query.filter_by(user_id=user_id)\
         .order_by(Summary.created_at.desc()).all()
@@ -552,11 +782,9 @@ def get_summaries():
         "summaries": [s.to_dict() for s in summaries]
     })
 
-# ========== ACTION ITEMS API ==========
 @app.route("/api/extract-action-items", methods=["POST"])
 @api_login_required
 def extract_action_items():
-    """Extract action items from transcript"""
     data = request.get_json()
     transcript_text = data.get("transcript", "")
     transcript_id = data.get("transcript_id")
@@ -584,6 +812,12 @@ def extract_action_items():
                     task.deadline = datetime.strptime(item.deadline, '%Y-%m-%d')
                 except:
                     pass
+            
+            db.session.add(task)
+            db.session.flush()
+            task_list.append(task.to_dict())
+        
+        db.session.commit()
 
         return jsonify({
             "success": True,
@@ -602,13 +836,12 @@ def extract_action_items():
         })
     except Exception as e:
         logger.error(f"Action items extraction error: {str(e)}")
+        db.session.rollback()
         return jsonify({"success": False, "error": str(e)}), 500
 
-# ========== TASKS API ==========
 @app.route("/api/tasks", methods=["GET"])
 @api_login_required
 def get_tasks():
-    """Get all tasks for user"""
     user_id = session['user_id']
     tasks = Task.query.filter_by(user_id=user_id)\
         .order_by(Task.created_at.desc()).all()
@@ -621,7 +854,6 @@ def get_tasks():
 @app.route("/api/tasks", methods=["POST"])
 @api_login_required
 def create_task():
-    """Create a new task"""
     data = request.get_json()
     
     task = Task(
@@ -641,12 +873,14 @@ def create_task():
         except:
             pass
     
+    db.session.add(task)
+    db.session.commit()
+    
     return jsonify({"success": True, "task": task.to_dict()})
 
 @app.route("/api/tasks/<int:task_id>", methods=["PUT"])
 @api_login_required
 def update_task(task_id):
-    """Update a task"""
     task = Task.query.get_or_404(task_id)
     
     if task.user_id != session['user_id']:
@@ -670,24 +904,26 @@ def update_task(task_id):
         except:
             pass
     
+    db.session.commit()
+    
     return jsonify({"success": True, "task": task.to_dict()})
 
 @app.route("/api/tasks/<int:task_id>", methods=["DELETE"])
 @api_login_required
 def delete_task(task_id):
-    """Delete a task"""
     task = Task.query.get_or_404(task_id)
     
     if task.user_id != session['user_id']:
         return jsonify({"success": False, "error": "Unauthorized"}), 403
     
+    db.session.delete(task)
+    db.session.commit()
+    
     return jsonify({"success": True})
 
-# ========== SENTIMENT ANALYSIS API ==========
 @app.route("/api/sentiment", methods=["POST"])
 @api_login_required
 def analyze_sentiment():
-    """Analyze sentiment of transcript"""
     data = request.get_json()
     transcript_text = data.get("transcript", "")
     transcript_id = data.get("transcript_id")
@@ -707,6 +943,9 @@ def analyze_sentiment():
             word_count=len(transcript_text.split())
         )
         
+        db.session.add(sentiment)
+        db.session.commit()
+        
         return jsonify({
             "success": True,
             "result": result,
@@ -717,11 +956,9 @@ def analyze_sentiment():
         logger.error(f"Sentiment analysis error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-# ========== TRANSLATION API ==========
 @app.route("/api/translate", methods=["POST"])
 @api_login_required
 def translate_text():
-    """Translate text"""
     data = request.get_json()
     text = data.get("text", "")
     source_lang = data.get("source_lang", "auto")
@@ -744,6 +981,9 @@ def translate_text():
                 word_count=len(text.split())
             )
             
+            db.session.add(translation)
+            db.session.commit()
+            
             return jsonify({
                 "success": True,
                 "translation": result["translated_text"],
@@ -761,7 +1001,6 @@ def translate_text():
 @app.route("/api/translations", methods=["GET"])
 @api_login_required
 def get_translations():
-    """Get all translations for user"""
     user_id = session['user_id']
     translations = Translation.query.filter_by(user_id=user_id)\
         .order_by(Translation.created_at.desc()).all()
@@ -771,11 +1010,9 @@ def get_translations():
         "translations": [t.to_dict() for t in translations]
     })
 
-# ========== CALENDAR API ==========
 @app.route("/api/calendar/events", methods=["GET"])
 @api_login_required
 def get_calendar_events():
-    """Get calendar events"""
     user_id = session['user_id']
     
     start_date = request.args.get('start')
@@ -807,7 +1044,6 @@ def get_calendar_events():
 @app.route("/api/calendar/events", methods=["POST"])
 @api_login_required
 def create_calendar_event():
-    """Create calendar event"""
     data = request.get_json()
     
     if not data.get('title') or not data.get('event_date'):
@@ -828,44 +1064,52 @@ def create_calendar_event():
         reminder_time=data.get('reminder_time')
     )
     
+    db.session.add(event)
+    db.session.commit()
+    
     return jsonify({"success": True, "event": event.to_dict()})
 
 @app.route("/api/calendar/events/<int:event_id>", methods=["DELETE"])
 @api_login_required
 def delete_calendar_event(event_id):
-    """Delete calendar event"""
     event = CalendarEvent.query.get_or_404(event_id)
     
     if event.user_id != session['user_id']:
         return jsonify({"success": False, "error": "Unauthorized"}), 403
     
+    db.session.delete(event)
+    db.session.commit()
+    
     return jsonify({"success": True})
 
-# ========== DASHBOARD API ==========
 @app.route("/api/dashboard/data", methods=["GET"])
 @api_login_required
 def get_dashboard_data():
-    """Get dashboard data for user"""
     user_id = session['user_id']
     
     user = get_current_user()
-
+    
+    transcript_count = Transcript.query.filter_by(user_id=user_id).count()
+    live_session_count = LiveSession.query.filter_by(user_id=user_id).count()
+    summary_count = Summary.query.filter_by(user_id=user_id).count()
+    task_count = Task.query.filter_by(user_id=user_id).count()
+    
     recent_transcripts = Transcript.query.filter_by(user_id=user_id)\
         .order_by(Transcript.created_at.desc()).limit(5).all()
     recent_live = LiveSession.query.filter_by(user_id=user_id)\
         .order_by(LiveSession.created_at.desc()).limit(5).all()
     recent_tasks = Task.query.filter_by(user_id=user_id)\
         .order_by(Task.created_at.desc()).limit(5).all()
-
+    
     pending_tasks = Task.query.filter_by(user_id=user_id, status='pending').count()
     completed_tasks = Task.query.filter_by(user_id=user_id, status='completed').count()
-
+    
     total_duration = 0
     for t in Transcript.query.filter_by(user_id=user_id).all():
         total_duration += t.duration or 0
     for l in LiveSession.query.filter_by(user_id=user_id).all():
         total_duration += l.duration or 0
-
+    
     languages = set()
     for t in Transcript.query.filter_by(user_id=user_id).all():
         if t.transcript_data and 'metadata' in t.transcript_data:
@@ -874,7 +1118,7 @@ def get_dashboard_data():
     for l in LiveSession.query.filter_by(user_id=user_id).all():
         if l.detected_language and l.detected_language != 'auto':
             languages.add(l.detected_language)
-
+    
     user_name = user.full_name if user and user.full_name else (user.username if user else 'User')
     
     return jsonify({
@@ -898,11 +1142,9 @@ def get_dashboard_data():
         }
     })
 
-# ========== ANALYTICS API ==========
 @app.route("/api/analytics/data", methods=["GET"])
 @api_login_required
 def get_analytics_data():
-    """Get analytics data"""
     user_id = session['user_id']
     
     days = int(request.args.get('days', 30))
@@ -933,7 +1175,6 @@ def get_analytics_data():
         SentimentAnalysis.created_at >= start_date
     ).all()
     
-    # Daily activity
     daily_activity = {}
     for i in range(days + 1):
         date = (datetime.utcnow() - timedelta(days=i)).strftime('%Y-%m-%d')
@@ -959,7 +1200,6 @@ def get_analytics_data():
         if date in daily_activity:
             daily_activity[date]['tasks'] += 1
     
-    # Sentiment distribution
     sentiment_counts = {'positive': 0, 'neutral': 0, 'negative': 0}
     for s in sentiments:
         sentiment = s.sentiment.lower()
@@ -985,11 +1225,9 @@ def get_analytics_data():
         }
     })
 
-# ========== FILES API ==========
 @app.route("/api/files", methods=["GET"])
 @api_login_required
 def get_files():
-    """Get all files for user"""
     user_id = session['user_id']
     
     transcripts = Transcript.query.filter_by(user_id=user_id).all()
@@ -1055,10 +1293,8 @@ def get_files():
     
     return jsonify({"success": True, "files": files})
 
-# ========== HEALTH CHECK ==========
 @app.route("/api/health", methods=["GET"])
 def health_check():
-    """Health check endpoint"""
     try:
         db.session.execute('SELECT 1')
         db_status = "healthy"
@@ -1072,18 +1308,19 @@ def health_check():
         "timestamp": datetime.utcnow().isoformat()
     })
 
-# ========== ERROR HANDLERS ==========
 @app.errorhandler(404)
 def not_found_error(error):
-    """Handle 404 errors"""
     return jsonify({"success": False, "error": "Resource not found"}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    """Handle 500 errors"""
     db.session.rollback()
     logger.error(f"Internal server error: {str(error)}")
     return jsonify({"success": False, "error": "Internal server error"}), 500
 
 if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()
+        logger.info("Database tables created/verified")
+
     app.run(debug=True, host='0.0.0.0', port=5000)
