@@ -901,6 +901,19 @@
             animation: shimmer 1.5s infinite;
         }
 
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .progress-percent {
+            text-align: right;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 4px;
+            color: var(--accent-primary);
+        }
+
         .right-column {
             display: flex;
             flex-direction: column;
@@ -1322,6 +1335,7 @@
             max-height: 500px;
             overflow-y: auto;
         }
+
         .summary-executive {
             display: flex;
             flex-direction: column;
@@ -1427,6 +1441,38 @@
             border-radius: 14px;
             padding: 16px;
             border: 1px solid var(--border-light);
+        }
+
+        .summary-bullet {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 12px;
+        }
+
+        .bullet-card {
+            background: var(--bg-card);
+            border-radius: 14px;
+            padding: 14px;
+            border: 1px solid var(--border-light);
+            transition: all 0.3s ease;
+        }
+
+        .bullet-card:hover {
+            transform: translateY(-3px);
+            border-color: var(--accent-primary);
+            box-shadow: var(--shadow-md);
+        }
+
+        .bullet-card i {
+            color: var(--accent-primary);
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .bullet-card p {
+            color: var(--text-secondary);
+            line-height: 1.5;
+            font-size: 12px;
         }
 
         .summary-stats {
@@ -1635,6 +1681,16 @@
             background: var(--accent-glow);
         }
 
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
         
         @keyframes slideOutRight {
             from {
@@ -1654,6 +1710,82 @@
 
         .fade-in {
             animation: fadeIn 0.5s ease;
+        }
+
+        @media (max-width: 1400px) {
+            .stats-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .input-card {
+                min-height: auto;
+            }
+            
+            .right-column {
+                min-height: auto;
+            }
+            
+            .summary-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .summary-bullet {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .stats-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .quick-modules-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .summary-stats {
+                grid-template-columns: 1fr;
+            }
+            
+            .summary-types {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                margin-left: 0;
+                padding: 16px;
+            }
+            
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+            
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+            
+            .menu-toggle {
+                display: flex;
+            }
+            
+            .main-content.expanded {
+                margin-left: 0;
+            }
+            
+            .stats-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .settings-row {
+                flex-direction: column;
+            }
         }
     </style>
 </head>
@@ -1841,6 +1973,16 @@
                             <i class="fas fa-file-upload"></i> Document
                         </div>
                     </div>
+                    
+                    <div class="input-section transcript-selector active" id="transcriptSelector">
+                        <div class="section-label">
+                            <i class="fas fa-history"></i>
+                            <span>Select Recent Transcript</span>
+                        </div>
+                        <select class="transcript-select" id="transcriptSelect" onchange="loadSelectedTranscript()">
+                            <option value="">Choose a transcript...</option>
+                        </select>
+                    </div>
 
                     <div class="input-section text-area-container" id="textAreaContainer">
                         <div class="section-label">
@@ -1850,6 +1992,7 @@
                         <textarea class="custom-textarea" id="transcriptText" placeholder="Paste your transcript here..."></textarea>
                         <div class="char-counter" id="charCounter">0 characters</div>
                     </div>
+
                     <div class="input-section document-upload" id="documentUpload">
                         <div class="section-label">
                             <i class="fas fa-file-upload"></i>
@@ -1874,6 +2017,11 @@
                             <div class="type-icon"><i class="fas fa-list-ul"></i></div>
                             <div class="type-title">Detailed</div>
                             <div class="type-desc">Comprehensive</div>
+                        </div>
+                        <div class="type-card" onclick="setSummaryType('bullet')" id="bulletType">
+                            <div class="type-icon"><i class="fas fa-circle"></i></div>
+                            <div class="type-title">Bullet</div>
+                            <div class="type-desc">Quick takeaways</div>
                         </div>
                     </div>
 
@@ -1914,6 +2062,9 @@
                         <div class="recent-header">
                             <h2><i class="fas fa-history"></i> Recent Summaries</h2>
                             <span class="view-all" onclick="viewAllSummaries()">View All</span>
+                        </div>
+                        
+                        <div class="recent-list" id="recentSummariesList">
                         </div>
                     </div>
 
@@ -1965,6 +2116,7 @@
                     </div>
                 </div>
             </div>
+
             <div class="results-card">
                 <div class="results-header">
                     <h2><i class="fas fa-file-alt"></i> Generated Summary</h2>
@@ -1994,6 +2146,7 @@
                         <p>Your generated summary will appear here</p>
                     </div>
                 </div>
+
                 <div class="summary-stats" id="summaryStats" style="display: none;">
                     <div class="stat-item-small">
                         <div class="stat-icon-small">
@@ -2077,6 +2230,29 @@
             }
         });
 
+        if (!localStorage.getItem('isLoggedIn')) {
+            window.location.href = '/';
+        }
+
+        const transcriptSelect = document.getElementById('transcriptSelect');
+        const transcriptText = document.getElementById('transcriptText');
+        const charCounter = document.getElementById('charCounter');
+        const generateBtn = document.getElementById('generateBtn');
+        const progressSection = document.getElementById('progressSection');
+        const progressStatus = document.getElementById('progressStatus');
+        const progressBar = document.getElementById('progressBar');
+        const progressPercentage = document.getElementById('progressPercentage');
+        const summaryContent = document.getElementById('summaryContent');
+        const resultsActions = document.getElementById('resultsActions');
+        const summaryStats = document.getElementById('summaryStats');
+        const summaryWords = document.getElementById('summaryWords');
+        const readTime = document.getElementById('readTime');
+        const compressionRatio = document.getElementById('compressionRatio');
+        const summaryTypeDisplay = document.getElementById('summaryTypeDisplay');
+        const documentUploadArea = document.getElementById('documentUploadArea');
+        const documentFile = document.getElementById('documentFile');
+        const documentInfo = document.getElementById('documentInfo');
+
         let currentSummaryType = 'executive';
         let currentSummary = null;
         let currentSummaryId = null;
@@ -2086,6 +2262,19 @@
         
         let summaries = JSON.parse(localStorage.getItem('summaries')) || [];
         let transcripts = JSON.parse(localStorage.getItem('transcripts')) || [];
+
+        function renumberSummaries() {
+            const sortedSummaries = [...summaries].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            
+            sortedSummaries.forEach((summary, index) => {
+                const summaryNumber = index + 1;
+                if (!summary.customName) {
+                    summary.title = `Summary ${summaryNumber}`;
+                }
+            });
+            
+            localStorage.setItem('summaries', JSON.stringify(summaries));
+        }
 
         function switchInputTab(mode) {
             currentInputMode = mode;
@@ -2169,6 +2358,9 @@
             const weeklySummaries = summaries.filter(s => new Date(s.timestamp) > oneWeekAgo).length;
             document.getElementById('weeklyIncrease').textContent = `+${weeklySummaries}`;
             
+            const avgTime = (Math.random() * 1.5 + 1.5).toFixed(1);
+            document.getElementById('avgProcessing').textContent = `${avgTime}s`;
+            
             const performance = (Math.random() * 20 + 10).toFixed(0);
             document.getElementById('performanceMetric').textContent = `${performance}% faster`;
             
@@ -2248,6 +2440,17 @@
                     </div>
                 </div>
             `}).join('');
+            
+            document.querySelectorAll('.recent-item').forEach(item => {
+                item.addEventListener('mouseenter', () => {
+                    const actions = item.querySelector('.recent-actions');
+                    if (actions) actions.style.display = 'flex';
+                });
+                item.addEventListener('mouseleave', () => {
+                    const actions = item.querySelector('.recent-actions');
+                    if (actions) actions.style.display = 'none';
+                });
+            });
         }
 
         function formatDate(timestamp) {
@@ -2266,6 +2469,7 @@
             if (diffDays < 7) return `${diffDays} days ago`;
             return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         }
+
         function loadTranscriptSelect() {
             if (!transcriptSelect) return;
             
@@ -2342,6 +2546,31 @@
         }
 
         async function generateSummary() {
+            let text = '';
+            
+            if (currentInputMode === 'transcript') {
+                text = transcriptText.value.trim();
+                if (!text) {
+                    showNotification('Please select a transcript first', 'error');
+                    return;
+                }
+            } else if (currentInputMode === 'text') {
+                text = transcriptText.value.trim();
+                if (!text) {
+                    showNotification('Please enter some text', 'error');
+                    return;
+                }
+            } else {
+                if (!selectedDocument) {
+                    showNotification('Please upload a document first', 'error');
+                    return;
+                }
+                progressSection.style.display = 'block';
+                generateBtn.disabled = true;
+                await uploadAndSummarizeDocument();
+                return;
+            }
+
             progressSection.style.display = 'block';
             generateBtn.disabled = true;
             
@@ -3157,6 +3386,7 @@
             localStorage.removeItem('userEmail');
             window.location.href = '/';
         });
+
         document.addEventListener('DOMContentLoaded', () => {
             renumberSummaries();
             loadTranscriptSelect();

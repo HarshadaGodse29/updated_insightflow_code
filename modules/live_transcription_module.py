@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY")
 STREAM_URL = "wss://api.assemblyai.com/v2/realtime/ws?sample_rate=16000"
 
+
 class LiveTranscriptionModule:
     def __init__(self):
         if not ASSEMBLYAI_API_KEY:
@@ -35,13 +36,13 @@ class LiveTranscriptionModule:
         self.session_id = None
         self.start_time = None
         self.word_count = 0
-
+        
         self.sample_rate = 16000
         self.channels = 1
         self.blocksize = 4096
         self.device = None
         self.stream = None
-
+        
         self.on_partial = None
         self.on_final = None
         self.on_error = None
@@ -77,7 +78,7 @@ class LiveTranscriptionModule:
         self.final_transcripts = []
         self.word_count = 0
         self.partial_text = ""
-
+        
         if device_index is not None:
             self.device = device_index
         
@@ -134,6 +135,7 @@ class LiveTranscriptionModule:
             "audio": True,
         }
         
+        # for multilingual support
         config["model"] = "universal_2"
         
         if self.language and self.language != 'auto':
@@ -162,6 +164,7 @@ class LiveTranscriptionModule:
             elif message_type == "FinalTranscript":
                 text = data.get("text", "")
                 if text and text.strip():
+                    # Get detected language
                     if "language" in data:
                         self.detected_language = data.get("language", "auto")
                         self.language_name = self._get_language_name(self.detected_language)
@@ -300,5 +303,6 @@ class LiveTranscriptionModule:
             'auto': 'Auto-detected'
         }
         return languages.get(lang_code, lang_code)
+
 
 live_transcriber = LiveTranscriptionModule()

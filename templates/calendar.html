@@ -1069,6 +1069,52 @@
             border-color: var(--accent-primary);
             color: var(--text-primary);
         }
+
+        @media (max-width: 1400px) {
+            .stats-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .calendar-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 16px;
+            }
+            
+            .sidebar {
+                transform: translateX(-100%);
+                position: fixed;
+            }
+            
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+            
+            .menu-toggle {
+                display: flex;
+            }
+            
+            .stats-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .calendar-header {
+                flex-direction: column;
+                gap: 12px;
+            }
+            
+            .calendar-weekdays {
+                display: none;
+            }
+            
+            .calendar-days {
+                grid-template-columns: repeat(1, 1fr);
+            }
+        }
     </style>
 </head>
 <body>
@@ -1387,11 +1433,11 @@ function checkReminders() {
         
         const diffMs = eventDate - now;
         const diffMins = Math.round(diffMs / 60000);
-
+        
         if (diffMins > 0 && diffMins <= event.reminderTime) {
             const lastNotified = localStorage.getItem(`notified_${event.id}`);
             const notifiedTime = lastNotified ? parseInt(lastNotified) : 0;
-
+            
             if (now.getTime() - notifiedTime > 3600000) {
                 upcomingEvents.push({
                     ...event,
@@ -1411,10 +1457,10 @@ function checkReminders() {
 
 function showReminder(event) {
     const minutesText = event.minutesAway === 1 ? 'minute' : 'minutes';
-
+    
     if (reminderSettings.desktop && "Notification" in window) {
         if (Notification.permission === "granted") {
-            new Notification(`${event.title}`, {
+            new Notification(`🔔 ${event.title}`, {
                 body: `${event.type} starts in ${event.minutesAway} ${minutesText}`,
                 icon: '/favicon.ico',
                 silent: !reminderSettings.sound
@@ -1423,9 +1469,9 @@ function showReminder(event) {
             Notification.requestPermission();
         }
     }
-
-    showNotification(`${event.title} starts in ${event.minutesAway} ${minutesText}`, 'reminder');
-
+    
+    showNotification(`🔔 ${event.title} starts in ${event.minutesAway} ${minutesText}`, 'reminder');
+    
     if (reminderSettings.sound) {
         playReminderSound();
     }
@@ -1452,6 +1498,66 @@ function addReminderButton() {
         headerRight.insertBefore(reminderBtn, headerRight.firstChild);
     }
 }
+
+function openReminderSettings() {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'reminderSettingsModal';
+    
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-bell"></i> Reminder Settings</h3>
+                <button class="close-modal" onclick="closeModal('reminderSettingsModal')">&times;</button>
+            </div>
+            
+            <div class="modal-field">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="reminderEnabled" ${reminderSettings.enabled ? 'checked' : ''}>
+                    <span>Enable Reminders</span>
+                </label>
+            </div>
+            
+            <div class="modal-field">
+                <label>Default Reminder Time</label>
+                <select id="defaultReminder">
+                    <option value="5" ${reminderSettings.defaultReminder === 5 ? 'selected' : ''}>5 minutes before</option>
+                    <option value="10" ${reminderSettings.defaultReminder === 10 ? 'selected' : ''}>10 minutes before</option>
+                    <option value="15" ${reminderSettings.defaultReminder === 15 ? 'selected' : ''}>15 minutes before</option>
+                    <option value="30" ${reminderSettings.defaultReminder === 30 ? 'selected' : ''}>30 minutes before</option>
+                    <option value="60" ${reminderSettings.defaultReminder === 60 ? 'selected' : ''}>1 hour before</option>
+                </select>
+            </div>
+            
+            <div class="modal-field">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="reminderSound" ${reminderSettings.sound ? 'checked' : ''}>
+                    <span>Play Sound</span>
+                </label>
+            </div>
+            
+            <div class="modal-field">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="reminderDesktop" ${reminderSettings.desktop ? 'checked' : ''}>
+                    <span>Desktop Notifications</span>
+                </label>
+                <small style="color: var(--text-muted); display: block; margin-top: 5px;">
+                    ${Notification.permission === 'granted' ? '✓ Notifications enabled' : 
+                      Notification.permission === 'denied' ? '✗ Notifications blocked' : 
+                      'Click to enable desktop notifications'}
+                </small>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="modal-btn primary" onclick="saveReminderSettings()">Save Settings</button>
+                <button class="modal-btn secondary" onclick="closeModal('reminderSettingsModal')">Cancel</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
 function saveReminderSettings() {
     reminderSettings = {
         enabled: document.getElementById('reminderEnabled')?.checked || false,
@@ -1509,7 +1615,7 @@ function loadEvents() {
         console.error('Error loading events:', e);
         calendarEvents = [];
     }
-
+    
     loadTasksFromStorage();
     updateStats();
     renderCalendar();
@@ -1519,10 +1625,9 @@ function loadEvents() {
 function loadTasksFromStorage() {
     try {
         const tasks = JSON.parse(localStorage.getItem('tasks')) || [];
-
+        
         tasks.forEach(task => {
             if (task.deadline && task.deadline !== 'No deadline') {
-
                 const exists = calendarEvents.some(e => 
                     e.title === task.title && 
                     e.source === 'task' && 
@@ -1563,7 +1668,7 @@ function updateStats() {
     document.getElementById('totalEvents').textContent = monthEvents.length;
     document.getElementById('totalMeetings').textContent = monthEvents.filter(e => e.type === 'meeting').length;
     document.getElementById('totalCalendarTasks').textContent = monthEvents.filter(e => e.type === 'task').length;
-
+    
     const weekEnd = new Date(now);
     weekEnd.setDate(now.getDate() + 7);
     const weekDeadlines = calendarEvents.filter(e => {
@@ -1590,9 +1695,21 @@ function renderCalendar() {
     const prevMonthLastDay = new Date(year, month, 0).getDate();
     
     let html = '';
+    
     for (let i = startDay - 1; i >= 0; i--) {
         const day = prevMonthLastDay - i;
         const date = new Date(year, month - 1, day);
+        html += renderDay(date, true);
+    }
+    
+    for (let day = 1; day <= totalDays; day++) {
+        const date = new Date(year, month, day);
+        html += renderDay(date, false);
+    }
+    
+    const remainingCells = 42 - (startDay + totalDays); // 6 rows * 7 days = 42
+    for (let day = 1; day <= remainingCells; day++) {
+        const date = new Date(year, month + 1, day);
         html += renderDay(date, true);
     }
     
@@ -1603,7 +1720,7 @@ function renderDay(date, isOtherMonth) {
     const today = new Date();
     const isToday = date.toDateString() === today.toDateString();
     const isSelected = selectedDate && date.toDateString() === selectedDate.toDateString();
-
+    
     const dayEvents = calendarEvents.filter(e => {
         const eventDate = new Date(e.date);
         return eventDate.toDateString() === date.toDateString();
@@ -1629,6 +1746,15 @@ function renderDay(date, isOtherMonth) {
     `;
 }
 
+function getEventColor(type) {
+    switch(type) {
+        case 'meeting': return '#6366F1';
+        case 'task': return '#F59E0B';
+        case 'deadline': return '#EF4444';
+        default: return '#8B5CF6';
+    }
+}
+
 function selectDate(dateStr) {
     selectedDate = new Date(dateStr);
     renderCalendar();
@@ -1645,7 +1771,16 @@ function renderEventsForSelectedDate() {
     
     document.getElementById('selectedDateDisplay').textContent = 
         selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-
+    
+    if (dayEvents.length === 0) {
+        eventsList.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-calendar-plus"></i>
+                <p>No events for this date. Click + to add an event.</p>
+            </div>
+        `;
+        return;
+    }
     const meetings = dayEvents.filter(e => e.type === 'meeting');
     const tasks = dayEvents.filter(e => e.type === 'task');
     const deadlines = dayEvents.filter(e => e.type === 'deadline');
@@ -1681,6 +1816,51 @@ function renderEventsForSelectedDate() {
     
     eventsList.innerHTML = html;
 }
+
+function renderEventItem(event) {
+    const typeClass = `type-${event.type}`;
+    const hasReminder = event.reminder ? '<i class="fas fa-bell" style="margin-left: 5px; font-size: 10px; color: var(--accent-primary);"></i>' : '';
+    
+    return `
+        <div class="event-item" onclick="viewEvent('${event.id}')">
+            <div class="event-time">
+                ${event.time || 'All day'}
+                ${hasReminder}
+            </div>
+            <div class="event-title">${event.title}</div>
+            <div class="event-desc">
+                <span class="event-type ${typeClass}">${event.type}</span>
+                <span>${event.description || ''}</span>
+            </div>
+            <div class="event-actions">
+                <button class="event-action-btn" onclick="editEvent('${event.id}', event)">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="event-action-btn delete" onclick="deleteEvent('${event.id}', event)">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function previousMonth() {
+    currentDate.setMonth(currentDate.getMonth() - 1);
+    renderCalendar();
+}
+
+function nextMonth() {
+    currentDate.setMonth(currentDate.getMonth() + 1);
+    renderCalendar();
+}
+
+function goToToday() {
+    currentDate = new Date();
+    selectedDate = new Date();
+    renderCalendar();
+    renderEventsForSelectedDate();
+}
+
 function setView(view) {
     currentView = view;
     document.querySelectorAll('.view-toggle').forEach(btn => {
@@ -1688,6 +1868,104 @@ function setView(view) {
     });
     document.getElementById(`view${view.charAt(0).toUpperCase() + view.slice(1)}`).classList.add('active');
     renderCalendar();
+}
+
+function selectEventType(type) {
+    currentEventType = type;
+    
+    document.querySelectorAll('.type-option').forEach(opt => {
+        opt.classList.remove('selected');
+    });
+    const element = document.getElementById(`type${type.charAt(0).toUpperCase() + type.slice(1)}`);
+    if (element) element.classList.add('selected');
+}
+
+function openAddEventModal() {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'addEventModal';
+    
+    const defaultDate = selectedDate.toISOString().split('T')[0];
+    const defaultTime = new Date().toTimeString().slice(0, 5);
+    
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-plus-circle"></i> Add Event</h3>
+                <button class="close-modal" onclick="closeModal('addEventModal')">&times;</button>
+            </div>
+            
+            <div class="modal-field">
+                <label>Event Title</label>
+                <input type="text" id="eventTitle" placeholder="Enter event title...">
+            </div>
+            
+            <div class="modal-row">
+                <div class="modal-field">
+                    <label>Date</label>
+                    <input type="date" id="eventDate" value="${defaultDate}">
+                </div>
+                <div class="modal-field">
+                    <label>Time</label>
+                    <input type="time" id="eventTime" value="${defaultTime}">
+                </div>
+            </div>
+            
+            <div class="modal-field">
+                <label>Event Type</label>
+                <div class="type-selector">
+                    <div class="type-option meeting selected" onclick="selectEventType('meeting')" id="typeMeeting">
+                        <i class="fas fa-video"></i> Meeting
+                    </div>
+                    <div class="type-option task" onclick="selectEventType('task')" id="typeTask">
+                        <i class="fas fa-tasks"></i> Task
+                    </div>
+                    <div class="type-option deadline" onclick="selectEventType('deadline')" id="typeDeadline">
+                        <i class="fas fa-hourglass-end"></i> Deadline
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-field">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="eventReminder" checked>
+                    <span>Set Reminder</span>
+                </label>
+            </div>
+            
+            <div class="modal-field" id="reminderOptions">
+                <label>Remind me</label>
+                <select id="reminderTime">
+                    <option value="5">5 minutes before</option>
+                    <option value="10">10 minutes before</option>
+                    <option value="15" selected>15 minutes before</option>
+                    <option value="30">30 minutes before</option>
+                    <option value="60">1 hour before</option>
+                </select>
+            </div>
+            
+            <div class="modal-field">
+                <label>Description (Optional)</label>
+                <textarea id="eventDescription" placeholder="Enter event description..."></textarea>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="modal-btn primary" onclick="saveEvent()">Save Event</button>
+                <button class="modal-btn secondary" onclick="closeModal('addEventModal')">Cancel</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    const reminderCheck = document.getElementById('eventReminder');
+    const reminderOpts = document.getElementById('reminderOptions');
+    
+    if (reminderCheck && reminderOpts) {
+        reminderCheck.addEventListener('change', function(e) {
+            reminderOpts.style.display = e.target.checked ? 'block' : 'none';
+        });
+    }
 }
 
 function saveEvent() {
@@ -1727,6 +2005,185 @@ function saveEvent() {
     showNotification('Event added successfully' + (setReminder ? ' with reminder' : ''), 'success');
 }
 
+function editEvent(id, event) {
+    if (event) event.stopPropagation();
+    
+    const eventData = calendarEvents.find(e => e.id === id);
+    if (!eventData) return;
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'editEventModal';
+    
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-edit"></i> Edit Event</h3>
+                <button class="close-modal" onclick="closeModal('editEventModal')">&times;</button>
+            </div>
+            
+            <div class="modal-field">
+                <label>Event Title</label>
+                <input type="text" id="editTitle" value="${eventData.title.replace(/"/g, '&quot;')}">
+            </div>
+            
+            <div class="modal-row">
+                <div class="modal-field">
+                    <label>Date</label>
+                    <input type="date" id="editDate" value="${eventData.date}">
+                </div>
+                <div class="modal-field">
+                    <label>Time</label>
+                    <input type="time" id="editTime" value="${eventData.time || '09:00'}">
+                </div>
+            </div>
+            
+            <div class="modal-field">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="editReminder" ${eventData.reminder ? 'checked' : ''}>
+                    <span>Set Reminder</span>
+                </label>
+            </div>
+            
+            <div class="modal-field" id="editReminderOptions" style="${eventData.reminder ? 'display: block;' : 'display: none;'}">
+                <label>Remind me</label>
+                <select id="editReminderTime">
+                    <option value="5" ${eventData.reminderTime === 5 ? 'selected' : ''}>5 minutes before</option>
+                    <option value="10" ${eventData.reminderTime === 10 ? 'selected' : ''}>10 minutes before</option>
+                    <option value="15" ${eventData.reminderTime === 15 ? 'selected' : ''}>15 minutes before</option>
+                    <option value="30" ${eventData.reminderTime === 30 ? 'selected' : ''}>30 minutes before</option>
+                    <option value="60" ${eventData.reminderTime === 60 ? 'selected' : ''}>1 hour before</option>
+                </select>
+            </div>
+            
+            <div class="modal-field">
+                <label>Description</label>
+                <textarea id="editDescription">${eventData.description || ''}</textarea>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="modal-btn primary" onclick="updateEvent('${id}')">Update Event</button>
+                <button class="modal-btn secondary" onclick="closeModal('editEventModal')">Cancel</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    const reminderCheck = document.getElementById('editReminder');
+    const reminderOpts = document.getElementById('editReminderOptions');
+    
+    if (reminderCheck && reminderOpts) {
+        reminderCheck.addEventListener('change', function(e) {
+            reminderOpts.style.display = e.target.checked ? 'block' : 'none';
+        });
+    }
+}
+
+function updateEvent(id) {
+    const eventData = calendarEvents.find(e => e.id === id);
+    if (!eventData) return;
+    
+    const newTitle = document.getElementById('editTitle')?.value.trim();
+    const newDate = document.getElementById('editDate')?.value;
+    const newTime = document.getElementById('editTime')?.value;
+    const newDescription = document.getElementById('editDescription')?.value;
+    const setReminder = document.getElementById('editReminder')?.checked || false;
+    const newReminderTime = setReminder ? parseInt(document.getElementById('editReminderTime')?.value) : null;
+    
+    if (!newTitle) {
+        showNotification('Please enter an event title', 'error');
+        return;
+    }
+    
+    eventData.title = newTitle;
+    eventData.date = newDate;
+    eventData.time = newTime;
+    eventData.description = newDescription;
+    eventData.reminder = setReminder;
+    eventData.reminderTime = newReminderTime || reminderSettings.defaultReminder;
+    
+    localStorage.setItem('calendarEvents', JSON.stringify(calendarEvents));
+    
+    closeModal('editEventModal');
+    renderCalendar();
+    renderEventsForSelectedDate();
+    updateReminderBadge();
+    
+    showNotification('Event updated successfully', 'success');
+}
+
+function deleteEvent(id, event) {
+    if (event) event.stopPropagation();
+    
+    if (!confirm('Are you sure you want to delete this event?')) return;
+    
+    calendarEvents = calendarEvents.filter(e => e.id !== id);
+    localStorage.setItem('calendarEvents', JSON.stringify(calendarEvents));
+    
+    renderCalendar();
+    renderEventsForSelectedDate();
+    updateStats();
+    updateReminderBadge();
+    
+    showNotification('Event deleted successfully', 'success');
+}
+
+function viewEvent(id) {
+    const event = calendarEvents.find(e => e.id === id);
+    if (!event) return;
+    
+    showNotification(`Viewing: ${event.title}`, 'info');
+}
+
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) modal.remove();
+}
+
+function showNotification(message, type = 'success') {
+    const colors = {
+        'success': 'linear-gradient(135deg, #10B981, #34D399)',
+        'error': 'linear-gradient(135deg, #EF4444, #F87171)',
+        'info': 'linear-gradient(135deg, #6366F1, #8B5CF6)',
+        'reminder': 'linear-gradient(135deg, #F59E0B, #FBBF24)'
+    };
+    
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: ${colors[type] || colors.info};
+        color: white;
+        padding: 12px 24px;
+        border-radius: 40px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+        z-index: 10001;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        animation: slideInRight 0.3s ease;
+    `;
+    
+    const icon = type === 'reminder' ? 'fa-bell' : 
+                 type === 'success' ? 'fa-check-circle' : 
+                 type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle';
+    
+    notification.innerHTML = `
+        <i class="fas ${icon}"></i>
+        <span>${message}</span>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.animation = 'slideOutRight 0.3s ease';
+        setTimeout(() => notification.remove(), 300);
+    }, 4000);
+}
+
 document.getElementById('logoutBtn').addEventListener('click', () => {
     localStorage.removeItem('isLoggedIn');
     localStorage.removeItem('userEmail');
@@ -1736,11 +2193,11 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
 document.addEventListener('DOMContentLoaded', () => {
     loadEvents();
     addReminderButton();
-
+    
     if (reminderSettings.desktop && Notification.permission === 'default') {
         Notification.requestPermission();
     }
-
+    
     window.previousMonth = previousMonth;
     window.nextMonth = nextMonth;
     window.goToToday = goToToday;

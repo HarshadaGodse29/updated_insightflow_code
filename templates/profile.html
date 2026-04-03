@@ -650,6 +650,46 @@
             transform: translateY(-2px);
             box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
         }
+
+        @media (max-width: 1200px) {
+            .profile-container {
+                flex-direction: column;
+                height: auto;
+            }
+            
+            .profile-sidebar {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 16px;
+            }
+            
+            .sidebar {
+                transform: translateX(-100%);
+                position: fixed;
+            }
+            
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+            
+            .menu-toggle {
+                display: flex;
+            }
+            
+            .settings-row {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .settings-input {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
@@ -973,7 +1013,7 @@
                     }
                 });
                 profileData.stats.hours = Math.round(totalWords / 9000 * 10) / 10;
-
+                
                 const tasks = JSON.parse(localStorage.getItem('tasks')) || [];
                 profileData.stats.tasks = tasks.length;
                 
@@ -997,17 +1037,17 @@
             document.getElementById('statProjects').textContent = profileData.stats.projects;
             document.getElementById('statHours').textContent = profileData.stats.hours;
             document.getElementById('statTasks').textContent = profileData.stats.tasks;
-
+            
             const avatarName = profileData.fullName.split(' ')[0] || 'User';
             document.getElementById('headerProfileImg').src = `https://ui-avatars.com/api/?name=${avatarName}&background=6366F1&color=fff`;
-
+            
             document.querySelectorAll('.toggle-switch').forEach(toggle => {
                 toggle.classList.remove('active');
             });
             
             if (profileData.emailNotif) document.querySelectorAll('.toggle-switch')[0].classList.add('active');
             if (profileData.desktopNotif) document.querySelectorAll('.toggle-switch')[1].classList.add('active');
-
+            
             updateNotificationBadge();
         }
 
@@ -1049,11 +1089,11 @@
             
             localStorage.setItem('profileData', JSON.stringify(profileData));
             localStorage.setItem('userEmail', profileData.email);
-
+            
             document.getElementById('profileName').textContent = profileData.fullName;
             document.getElementById('profileEmail').textContent = profileData.email;
             document.getElementById('sidebarUserName').textContent = profileData.fullName;
-
+            
             const avatarName = profileData.fullName.split(' ')[0] || 'User';
             document.getElementById('headerProfileImg').src = `https://ui-avatars.com/api/?name=${avatarName}&background=6366F1&color=fff`;
             
@@ -1129,6 +1169,32 @@
                 setTimeout(() => notification.remove(), 300);
             }, 3000);
         }
+
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from {
+                    opacity: 0;
+                    transform: translateX(100px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+            }
+            
+            @keyframes slideOut {
+                from {
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+                to {
+                    opacity: 0;
+                    transform: translateX(100px);
+                }
+            }
+        `;
+        document.head.appendChild(style);
 
         document.getElementById('logoutBtn').addEventListener('click', () => {
             localStorage.removeItem('isLoggedIn');

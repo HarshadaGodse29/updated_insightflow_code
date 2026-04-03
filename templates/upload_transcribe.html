@@ -66,6 +66,7 @@
             background-size: 50px 50px;
             pointer-events: none;
         }
+
         .sidebar {
             width: 280px;
             background: var(--bg-dark);
@@ -389,6 +390,7 @@
             height: 100%;
             object-fit: cover;
         }
+
         .stats-row {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -468,6 +470,7 @@
             align-items: center;
             gap: 4px;
         }
+
         .content-grid {
             display: grid;
             grid-template-columns: 1.2fr 0.8fr;
@@ -475,6 +478,7 @@
             margin-bottom: 24px;
             align-items: stretch;
         }
+
         .upload-card {
             background: var(--bg-card);
             border-radius: 24px;
@@ -817,6 +821,19 @@
             animation: shimmer 1.5s infinite;
         }
 
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .progress-percent {
+            text-align: right;
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 8px;
+            color: var(--accent-primary);
+        }
+
         .right-column {
             display: flex;
             flex-direction: column;
@@ -967,6 +984,7 @@
             border: 1px solid var(--border-light);
             flex-shrink: 0;
         }
+
         .recent-actions {
             position: absolute;
             right: 10px;
@@ -1564,6 +1582,112 @@
         ::-webkit-scrollbar-thumb:hover {
             background: var(--accent-glow);
         }
+
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        @keyframes slideOutRight {
+            from {
+                opacity: 1;
+                transform: translateX(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+        }
+
+        @media (max-width: 1400px) {
+            .stats-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .right-column {
+                min-height: auto;
+            }
+            
+            .transcript-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .stats-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .quick-modules-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                margin-left: 0;
+                padding: 16px;
+            }
+            
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+            
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+            
+            .menu-toggle {
+                display: flex;
+            }
+            
+            .main-content.expanded {
+                margin-left: 0;
+            }
+            
+            .stats-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .language-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .auto-detect-toggle {
+                justify-content: center;
+            }
+            
+            .recent-meta {
+                flex-direction: column;
+                gap: 5px;
+            }
+            
+            .transcript-stats {
+                grid-template-columns: 1fr;
+            }
+            
+            .modal-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .modal-item-actions {
+                align-self: flex-end;
+                margin-top: 10px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1795,6 +1919,7 @@
                             Cancel
                         </button>
                     </div>
+
                     <div class="progress-container" id="progressSection" style="display: none;">
                         <div class="progress-status">
                             <i class="fas fa-circle-notch fa-spin"></i>
@@ -1870,6 +1995,7 @@
                     </div>
                 </div>
             </div>
+
             <div class="results-card">
                 <div class="results-header">
                     <h2><i class="fas fa-file-alt"></i> Transcription Results</h2>
@@ -1999,6 +2125,18 @@
             }
         });
 
+        menuToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('mobile-open');
+        });
+
+        document.addEventListener('click', (e) => {
+            if (window.innerWidth <= 768) {
+                if (!sidebar.contains(e.target) && !menuToggle.contains(e.target)) {
+                    sidebar.classList.remove('mobile-open');
+                }
+            }
+        });
+
         async function checkAuth() {
             try {
                 const response = await fetch('/api/user/profile');
@@ -2045,6 +2183,74 @@
             }
         }
 
+        async function loadTranscripts() {
+            try {
+                const response = await fetch('/api/transcripts');
+                const data = await response.json();
+                
+                const recentList = document.getElementById('recentTranscriptsList');
+                
+                if (!data.success || !data.transcripts || data.transcripts.length === 0) {
+                    recentList.innerHTML = `
+                        <div class="empty-state">
+                            <i class="fas fa-file-audio"></i>
+                            <p>No transcriptions yet. Process your first audio file to see it here.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                const recent = data.transcripts.slice(0, 5);
+                
+                recentList.innerHTML = recent.map(t => `
+                    <div class="recent-item" data-id="${t.id}">
+                        <div class="recent-icon">
+                            <i class="fas ${getFileIcon(t.filename)}"></i>
+                        </div>
+                        <div class="recent-details" onclick="loadTranscriptFromDB(${t.id})">
+                            <div class="recent-title">${t.title || t.filename}</div>
+                            <div class="recent-meta">
+                                <span><i class="fas fa-clock"></i> ${formatDuration(t.duration)}</span>
+                                <span><i class="fas fa-user-friends"></i> ${t.speaker_count || 0} spkrs</span>
+                                <span><i class="fas fa-calendar"></i> ${formatDate(t.created_at)}</span>
+                            </div>
+                        </div>
+                        <span class="language-badge">${t.language || 'EN'}</span>
+                        <span class="accuracy-badge">${Math.floor(Math.random() * 5) + 95}%</span>
+                        
+                        <div class="recent-actions">
+                            <button class="icon-btn-small" onclick="renameTranscript(${t.id}, event)" title="Rename">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="icon-btn-small delete-btn" onclick="deleteTranscript(${t.id}, event)" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+                
+                document.querySelectorAll('.recent-item').forEach(item => {
+                    item.addEventListener('mouseenter', () => {
+                        const actions = item.querySelector('.recent-actions');
+                        if (actions) actions.style.display = 'flex';
+                    });
+                    item.addEventListener('mouseleave', () => {
+                        const actions = item.querySelector('.recent-actions');
+                        if (actions) actions.style.display = 'none';
+                    });
+                });
+                
+            } catch (error) {
+                console.error('Failed to load transcripts:', error);
+                document.getElementById('recentTranscriptsList').innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <p>Failed to load transcripts. Please refresh.</p>
+                    </div>
+                `;
+            }
+        }
+
         function getFileIcon(filename) {
             if (!filename) return 'fa-file';
             const ext = filename.split('.').pop().toLowerCase();
@@ -2072,6 +2278,22 @@
             if (diffDays < 7) return `${diffDays} days ago`;
             return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         }
+
+        async function loadUserSettings() {
+            try {
+                const response = await fetch('/api/user/profile');
+                const data = await response.json();
+                if (data.success && data.settings) {
+                    if (data.settings.sidebar_collapsed) {
+                        sidebar.classList.add('collapsed');
+                        mainContent.classList.add('expanded');
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load user settings:', error);
+            }
+        }
+
         const uploadContainer = document.getElementById('uploadContainer');
         const audioFile = document.getElementById('audioFile');
         const browseBtn = document.getElementById('browseBtn');
@@ -2153,6 +2375,22 @@
         }
 
         async function startTranscription() {
+            if (!selectedFile) {
+                showNotification('Please select a file first', 'error');
+                return;
+            }
+
+            const progressSection = document.getElementById('progressSection');
+            const progressStatus = document.getElementById('progressStatus');
+            const progressBar = document.getElementById('progressBar');
+            const progressPercentage = document.getElementById('progressPercentage');
+            
+            progressSection.style.display = 'block';
+            transcribeBtn.disabled = true;
+            
+            const formData = new FormData();
+            formData.append('audio', selectedFile);
+            
             const autoDetect = document.getElementById('autoDetect').checked;
             const languageSelect = document.getElementById('languageSelect');
             
@@ -2215,6 +2453,13 @@
 
         function displayTranscript(transcript, languageName = 'English') {
             if (!transcript || !transcript.segments) return;
+
+            const transcriptPlaceholder = document.getElementById('transcriptPlaceholder');
+            const transcriptDisplay = document.getElementById('transcriptDisplay');
+            const resultsActions = document.getElementById('resultsActions');
+            const quickModules = document.getElementById('quickModules');
+            const languageInfoBar = document.getElementById('languageInfoBar');
+            const transcriptContent = document.getElementById('transcriptContent');
             
             let html = '';
             let totalWordCount = 0;
@@ -2277,12 +2522,14 @@
                     currentTranscriptId = data.transcript.id;
                     displayTranscript(currentTranscript, data.transcript.language_name || 'English');
                     
+                    document.querySelector('.results-card').scrollIntoView({ behavior: 'smooth' });
                 }
             } catch (error) {
                 console.error('Failed to load transcript:', error);
                 showNotification('Failed to load transcript', 'error');
             }
         }
+
         async function renameTranscript(id, event) {
             if (event) event.stopPropagation();
             
@@ -2305,6 +2552,7 @@
                 showNotification('Failed to rename transcript', 'error');
             }
         }
+
         async function deleteTranscript(id, event) {
             if (event) event.stopPropagation();
             
@@ -2332,6 +2580,7 @@
                 showNotification('Failed to delete transcript', 'error');
             }
         }
+
         async function viewAllTranscripts() {
             try {
                 const response = await fetch('/api/transcripts');

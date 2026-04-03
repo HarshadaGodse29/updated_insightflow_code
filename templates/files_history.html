@@ -1087,6 +1087,61 @@
             border-color: var(--accent-primary);
             color: var(--text-primary);
         }
+
+        @media (max-width: 1400px) {
+            .stats-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .content-grid {
+                flex-direction: column;
+                height: auto;
+            }
+            
+            .preview-meta-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 16px;
+            }
+            
+            .sidebar {
+                transform: translateX(-100%);
+                position: fixed;
+            }
+            
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+            
+            .menu-toggle {
+                display: flex;
+            }
+            
+            .stats-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .file-actions {
+                position: static;
+                transform: none;
+                margin-top: 12px;
+                justify-content: flex-end;
+            }
+            
+            .file-item:hover .file-actions {
+                display: flex;
+            }
+            
+            .type-filters {
+                overflow-x: auto;
+                flex-wrap: nowrap;
+                padding-bottom: 12px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1381,6 +1436,20 @@
             }
         });
 
+        if (!localStorage.getItem('isLoggedIn')) {
+            window.location.href = '/';
+        }
+
+        const filesList = document.getElementById('filesList');
+        const previewContent = document.getElementById('previewContent');
+        const searchInput = document.getElementById('searchInput');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const deleteBtn = document.getElementById('deleteBtn');
+        const totalFiles = document.getElementById('totalFiles');
+        const audioCount = document.getElementById('audioCount');
+        const transcriptCount = document.getElementById('transcriptCount');
+        const totalHours = document.getElementById('totalHours');
+
         let allFiles = [];
         let filteredFiles = [];
         let currentFilter = 'all';
@@ -1389,7 +1458,7 @@
 
         function loadAllFiles() {
             allFiles = [];
-
+            
             try {
                 const transcripts = JSON.parse(localStorage.getItem('transcripts')) || [];
                 transcripts.forEach(t => {
@@ -1464,13 +1533,122 @@
             filterFiles();
         }
 
+        function updateStats() {
+            totalFiles.textContent = allFiles.length;
+            
+            const audioFiles = allFiles.filter(f => f.type === 'audio').length;
+            const transcriptFiles = allFiles.filter(f => f.type === 'transcript').length;
+            
+            audioCount.textContent = audioFiles;
+            transcriptCount.textContent = transcriptFiles;
+            
+            let totalWords = 0;
+            allFiles.forEach(f => {
+                if (f.type === 'transcript' && f.segments) {
+                    f.segments.forEach(s => {
+                        totalWords += s.text?.split(' ').length || 0;
+                    });
+                }
+            });
+            const hours = Math.round(totalWords / 9000 * 10) / 10; 
+            totalHours.textContent = hours;
+        }
+
+        function filterFiles() {
+            filteredFiles = allFiles.filter(file => {
+                if (currentFilter !== 'all' && file.type !== currentFilter) {
+                    return false;
+                }
+                
+                if (searchTerm) {
+                    const nameMatch = file.name.toLowerCase().includes(searchTerm.toLowerCase());
+                    return nameMatch;
+                }
+                
+                return true;
+            });
+            
+            renderFiles();
+        }
+
+        function filterByType(type) {
+            currentFilter = type;
+            
+            document.querySelectorAll('.type-filter').forEach(filter => {
+                filter.classList.remove('active');
+            });
+            document.getElementById(`filter${type.charAt(0).toUpperCase() + type.slice(1)}`).classList.add('active');
+            
+            filterFiles();
+        }
+
+        searchInput.addEventListener('input', (e) => {
+            searchTerm = e.target.value;
+            filterFiles();
+        });
+
+        function renderFiles() {
+            if (!filesList) return;
+            
+            if (filteredFiles.length === 0) {
+                filesList.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-folder-open"></i>
+                        <p>No files found matching your criteria.</p>
+                        <button class="empty-btn" onclick="location.href='/upload-transcribe'">
+                            <i class="fas fa-upload"></i> Upload Audio
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+            
+            filesList.innerHTML = filteredFiles.map(file => `
+                <div class="file-item ${selectedFile?.id === file.id ? 'selected' : ''}" onclick="selectFile('${file.id}')">
+                    <div class="file-header">
+                        <div class="file-icon" style="background: ${file.color}20; color: ${file.color};">
+                            <i class="fas ${file.icon}"></i>
+                        </div>
+                        <div class="file-info">
+                            <div class="file-name">
+                                ${file.name}
+                                <span class="file-type">${file.type}</span>
+                            </div>
+                            <div class="file-meta">
+                                <span><i class="fas fa-clock"></i> ${formatDate(file.timestamp)}</span>
+                                <span><i class="fas fa-file"></i> ${formatSize(file.size)}</span>
+                                ${file.type === 'task' ? `<span><i class="fas fa-list-check"></i> ${file.taskCount || 0} tasks</span>` : ''}
+                                ${file.type === 'transcript' && file.segments ? `<span><i class="fas fa-users"></i> ${file.segments.length} segments</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="file-actions">
+                            <button class="file-action-btn download" onclick="downloadFile('${file.id}', event)" title="Download">
+                                <i class="fas fa-download"></i>
+                            </button>
+                            <button class="file-action-btn" onclick="renameFile('${file.id}', event)" title="Rename">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="file-action-btn delete" onclick="deleteFile('${file.id}', event)" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
         function selectFile(id) {
             selectedFile = filteredFiles.find(f => f.id === id);
             if (!selectedFile) return;
-
+            
+            document.querySelectorAll('.file-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            event.currentTarget.classList.add('selected');
+            
             downloadBtn.disabled = false;
             deleteBtn.disabled = false;
-
+            
             renderPreview();
         }
 
@@ -1500,7 +1678,7 @@
         function renderTranscriptPreview(file) {
             const segments = file.segments || [];
             const wordCount = segments.reduce((sum, s) => sum + (s.text?.split(' ').length || 0), 0);
-            const duration = Math.ceil(wordCount / 150); // minutes
+            const duration = Math.ceil(wordCount / 150); 
             
             return `
                 <div class="preview-card">
@@ -1547,7 +1725,44 @@
                 </div>
             `;
         }
-        // Render task preview
+        function renderSummaryPreview(file) {
+            const data = file.data;
+            
+            return `
+                <div class="preview-card">
+                    <div class="preview-title">
+                        <i class="fas fa-compress-alt" style="color: #10B981;"></i>
+                        ${file.name}
+                    </div>
+                    
+                    <div class="preview-meta-grid">
+                        <div class="preview-meta-item">
+                            <div class="meta-label">Created</div>
+                            <div class="meta-value">${new Date(file.timestamp).toLocaleString()}</div>
+                        </div>
+                        <div class="preview-meta-item">
+                            <div class="meta-label">Type</div>
+                            <div class="meta-value">${data.type || 'Summary'}</div>
+                        </div>
+                        <div class="preview-meta-item">
+                            <div class="meta-label">Words</div>
+                            <div class="meta-value">${data.wordCount || 0}</div>
+                        </div>
+                        <div class="preview-meta-item">
+                            <div class="meta-label">Read Time</div>
+                            <div class="meta-value">${data.readTime || '1 min'}</div>
+                        </div>
+                    </div>
+                    
+                    <div style="background: var(--bg-dark); border-radius: 12px; padding: 20px; border: 1px solid var(--border-light);">
+                        <div style="white-space: pre-wrap; line-height: 1.8; color: var(--text-secondary);">
+                            ${data.content || 'No content available'}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
         function renderTaskPreview(file) {
             const tasks = file.data || [];
             const pending = tasks.filter(t => !t.completed).length;
@@ -1604,6 +1819,36 @@
                 </div>
             `;
         }
+        function renderGenericPreview(file) {
+            return `
+                <div class="preview-card">
+                    <div class="preview-title">
+                        <i class="fas fa-file"></i>
+                        ${file.name}
+                    </div>
+                    
+                    <div class="preview-meta-grid">
+                        <div class="preview-meta-item">
+                            <div class="meta-label">Created</div>
+                            <div class="meta-value">${new Date(file.timestamp).toLocaleString()}</div>
+                        </div>
+                        <div class="preview-meta-item">
+                            <div class="meta-label">Type</div>
+                            <div class="meta-value">${file.type}</div>
+                        </div>
+                        <div class="preview-meta-item">
+                            <div class="meta-label">Size</div>
+                            <div class="meta-value">${formatSize(file.size)}</div>
+                        </div>
+                    </div>
+                    
+                    <div style="background: var(--bg-dark); border-radius: 12px; padding: 20px; text-align: center; color: var(--text-muted);">
+                        <i class="fas fa-file" style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;"></i>
+                        <p>Preview not available for this file type</p>
+                    </div>
+                </div>
+            `;
+        }
 
         function downloadFile(id, event) {
             if (event) event.stopPropagation();
@@ -1652,7 +1897,7 @@
             
             const file = allFiles.find(f => f.id === id);
             if (!file) return;
-
+            
             switch(file.type) {
                 case 'transcript':
                     const transcripts = JSON.parse(localStorage.getItem('transcripts')) || [];
@@ -1671,9 +1916,9 @@
                     localStorage.setItem('tasks', JSON.stringify(newTasks));
                     break;
             }
-
+            
             loadAllFiles();
-
+            
             if (selectedFile?.id === id) {
                 selectedFile = null;
                 downloadBtn.disabled = true;
@@ -1728,7 +1973,7 @@
             
             const file = allFiles.find(f => f.id === id);
             if (!file) return;
-
+            
             switch(file.type) {
                 case 'transcript':
                     const transcripts = JSON.parse(localStorage.getItem('transcripts')) || [];
@@ -1817,6 +2062,11 @@
             return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
         }
 
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) modal.remove();
+        }
+
         function showNotification(message, type = 'success') {
             const notification = document.createElement('div');
             notification.style.cssText = `
@@ -1857,7 +2107,7 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             loadAllFiles();
-
+            
             window.filterByType = filterByType;
             window.downloadFile = downloadFile;
             window.deleteFile = deleteFile;

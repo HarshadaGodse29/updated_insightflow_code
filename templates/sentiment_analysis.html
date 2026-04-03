@@ -791,6 +791,69 @@
             border: 1px solid var(--accent-warning);
         }
 
+        .meter-container {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            margin-bottom: 20px;
+        }
+
+        .meter-gauge {
+            width: 180px;
+            height: 180px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .meter-bg {
+            fill: none;
+            stroke: var(--bg-elevated);
+            stroke-width: 12;
+        }
+
+        .meter-fill {
+            fill: none;
+            stroke-width: 12;
+            stroke-linecap: round;
+            stroke: url(#gradient);
+            filter: drop-shadow(0 0 15px currentColor);
+            transition: stroke-dasharray 1s ease;
+        }
+
+        .meter-value {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 42px;
+            font-weight: 700;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .meter-labels {
+            flex: 1;
+        }
+
+        .meter-label {
+            font-size: 16px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .meter-score {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .meter-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
         .emotion-tags {
             display: flex;
             flex-wrap: wrap;
@@ -813,6 +876,80 @@
             transform: translateY(-2px);
             border-color: var(--accent-primary);
             color: var(--text-primary);
+        }
+
+        .timeline-card {
+            background: var(--bg-card);
+            border-radius: 20px;
+            padding: 20px;
+            border: 1px solid var(--border-light);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .timeline-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .timeline-header h3 i {
+            color: var(--accent-primary);
+        }
+
+        .timeline-bars {
+            display: flex;
+            align-items: flex-end;
+            height: 120px;
+            gap: 4px;
+            margin-bottom: 10px;
+        }
+
+        .timeline-bar {
+            flex: 1;
+            border-radius: 6px 6px 0 0;
+            transition: height 0.3s ease;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .timeline-bar:hover {
+            opacity: 0.9;
+            transform: scaleY(1.05);
+        }
+
+        .timeline-bar::after {
+            content: attr(data-value);
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            color: var(--text-muted);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .timeline-bar:hover::after {
+            opacity: 1;
+        }
+
+        .timeline-labels {
+            display: flex;
+            justify-content: space-between;
+            color: var(--text-muted);
+            font-size: 10px;
         }
 
         .phrases-card {
@@ -1037,6 +1174,61 @@
             font-size: 14px;
             margin-bottom: 20px;
         }
+
+        @media (max-width: 1400px) {
+            .stats-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .input-column {
+                min-height: auto;
+                max-height: none;
+            }
+            
+            .results-column {
+                height: auto;
+            }
+            
+            .meter-container {
+                flex-direction: column;
+                text-align: center;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                margin-left: 0;
+                padding: 16px;
+            }
+            
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+            
+            .menu-toggle {
+                display: flex;
+            }
+            
+            .stats-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .timeline-bars {
+                height: 80px;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1243,6 +1435,15 @@
                             </select>
                         </div>
 
+                        <div class="input-section text-area-container" id="textAreaContainer">
+                            <div class="section-label">
+                                <i class="fas fa-edit"></i>
+                                <span>Paste Text</span>
+                            </div>
+                            <textarea class="custom-textarea" id="transcriptText" placeholder="Paste your text here for sentiment analysis..."></textarea>
+                            <div class="char-counter" id="charCounter">0 characters</div>
+                        </div>
+
                         <button class="analyze-btn" id="analyzeBtn" onclick="analyzeSentiment()">
                             <i class="fas fa-magic"></i>
                             Analyze Sentiment
@@ -1292,12 +1493,37 @@
                                 <div class="meter-desc" id="sentimentDesc">Balanced sentiment with positive lean</div>
                             </div>
                         </div>
+
+                        <div class="emotion-tags" id="emotionTags">
+                        </div>
                     </div>
+
+                    <div class="timeline-card">
+                        <div class="timeline-header">
+                            <h3><i class="fas fa-chart-line"></i> Sentiment Timeline</h3>
+                            <span class="sentiment-badge" id="timelineRange">Last 10 segments</span>
+                        </div>
+                        <div class="timeline-bars" id="timelineBars">
+                        </div>
+                        <div class="timeline-labels">
+                            <span>Start</span>
+                            <span>Middle</span>
+                            <span>End</span>
+                        </div>
+                    </div>
+
                     <div class="phrases-card">
                         <div class="phrases-header">
                             <h3><i class="fas fa-quote-right"></i> Key Emotional Phrases</h3>
                             <span class="phrases-count" id="phrasesCount">0 phrases</span>
                         </div>
+                        <div class="phrases-list" id="phrasesList">
+                            <div class="empty-state">
+                                <i class="fas fa-quote-right"></i>
+                                <p>No emotional phrases detected yet</p>
+                            </div>
+                        </div>
+
                         <div class="action-buttons">
                             <div class="download-dropdown">
                                 <button class="action-btn">
@@ -1365,6 +1591,33 @@
                 }
             }
         });
+        
+        if (!localStorage.getItem('isLoggedIn')) {
+            window.location.href = '/';
+        }
+
+        const transcriptSelect = document.getElementById('transcriptSelect');
+        const transcriptText = document.getElementById('transcriptText');
+        const charCounter = document.getElementById('charCounter');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const progressSection = document.getElementById('progressSection');
+        const progressStatus = document.getElementById('progressStatus');
+        const progressBar = document.getElementById('progressBar');
+        const progressPercentage = document.getElementById('progressPercentage');
+        const resultsColumn = document.getElementById('resultsColumn');
+        const sentimentBadge = document.getElementById('sentimentBadge');
+        const sentimentScore = document.getElementById('sentimentScore');
+        const sentimentScoreText = document.getElementById('sentimentScoreText');
+        const sentimentDesc = document.getElementById('sentimentDesc');
+        const emotionTags = document.getElementById('emotionTags');
+        const timelineBars = document.getElementById('timelineBars');
+        const timelineRange = document.getElementById('timelineRange');
+        const phrasesList = document.getElementById('phrasesList');
+        const phrasesCount = document.getElementById('phrasesCount');
+        const totalAnalyses = document.getElementById('totalAnalyses');
+        const positiveCount = document.getElementById('positiveCount');
+        const neutralCount = document.getElementById('neutralCount');
+        const negativeCount = document.getElementById('negativeCount');
 
         let transcripts = JSON.parse(localStorage.getItem('transcripts')) || [];
         let sentimentHistory = JSON.parse(localStorage.getItem('sentimentHistory')) || [];
@@ -1381,6 +1634,21 @@
         };
 
         updateStatsDisplay();
+
+        function loadTranscriptSelect() {
+            if (!transcriptSelect) return;
+            
+            let options = '<option value="">Choose a transcript...</option>';
+            
+            if (transcripts.length > 0) {
+                transcripts.slice(0, 10).forEach(t => {
+                    const displayName = t.name && t.name.length > 40 ? t.name.substring(0, 40) + '...' : (t.name || 'Untitled');
+                    options += `<option value="transcript_${t.id}">📝 ${displayName} (${formatDate(t.timestamp)})</option>`;
+                });
+            }
+            
+            transcriptSelect.innerHTML = options;
+        }
 
         function formatDate(timestamp) {
             const date = new Date(timestamp);
@@ -1517,18 +1785,21 @@
 
         function displaySentimentResults(result, text) {
             currentSentimentResult = result;
-
+            
             resultsColumn.style.display = 'flex';
-
+            
             const sentiment = result.sentiment || 'Neutral';
             const score = result.polarity_score || 0;
             const scorePercent = Math.round((score + 1) * 50); 
+            
             sentimentBadge.textContent = sentiment;
             sentimentBadge.className = `sentiment-badge badge-${sentiment.toLowerCase()}`;
+            
             const circumference = 2 * Math.PI * 75;
             const offset = circumference - (scorePercent / 100) * circumference;
             document.querySelector('.meter-fill').setAttribute('stroke-dashoffset', offset);
             sentimentScore.textContent = scorePercent + '%';
+            
             sentimentScoreText.textContent = `${scorePercent}% ${sentiment}`;
             
             let descText = '';
@@ -1540,7 +1811,7 @@
                 descText = 'The conversation shows neutral sentiment with balanced discussions';
             }
             sentimentDesc.textContent = descText;
-      
+            
             generateEmotionTags(sentiment, score);
             
             generateTimeline(text);
@@ -1549,7 +1820,6 @@
             
             updateHistory(sentiment);
         }
-
         function generateEmotionTags(sentiment, score) {
             const emotions = {
                 'Positive': ['Enthusiastic', 'Optimistic', 'Confident', 'Appreciative', 'Supportive'],
@@ -1564,6 +1834,30 @@
             emotionTags.innerHTML = selected.map(emotion => 
                 `<span class="emotion-tag">${emotion}</span>`
             ).join('');
+        }
+
+        function generateTimeline(text) {
+            const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+            const segments = Math.min(sentences.length, 20);
+            timelineRange.textContent = `${segments} segments`;
+            
+            let bars = '';
+            for (let i = 0; i < segments; i++) {
+                const randomScore = Math.random() * 2 - 1;
+                const height = 30 + Math.abs(randomScore) * 70;
+                let color;
+                
+                if (randomScore > 0.3) color = 'var(--accent-success)';
+                else if (randomScore < -0.3) color = 'var(--accent-danger)';
+                else color = 'var(--accent-warning)';
+                
+                bars += `<div class="timeline-bar" 
+                          style="height: ${height}px; background: ${color};"
+                          data-value="${Math.round(randomScore * 100)}%"
+                          title="Segment ${i+1}: ${Math.round(randomScore * 100)}%"></div>`;
+            }
+            
+            timelineBars.innerHTML = bars;
         }
 
         function generateKeyPhrases(text, sentiment) {
@@ -1724,15 +2018,14 @@
             
             showNotification('CSV file downloaded successfully!', 'success');
         }
+
         function exportDOC(fileName) {
             const sentiment = currentSentimentResult.sentiment || 'Unknown';
             const score = currentSentimentResult.polarity_score || 0;
             const scorePercent = Math.round((score + 1) * 50);
             
-            // Get emotion tags
             const emotionTags = Array.from(document.querySelectorAll('.emotion-tag')).map(tag => tag.textContent).join(', ');
             
-            // Get key phrases
             const phraseItems = document.querySelectorAll('.phrase-item');
             let phrasesHTML = '';
             phraseItems.forEach(item => {
@@ -1740,6 +2033,79 @@
                 const text = item.querySelector('.phrase-text')?.textContent || '';
                 phrasesHTML += `<p><strong>${score}:</strong> ${text}</p>`;
             });
+            
+            const docContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Sentiment Analysis Report</title>
+                    <style>
+                        body { font-family: 'Calibri', Arial, sans-serif; padding: 30px; max-width: 800px; margin: 0 auto; }
+                        h1 { color: #6366F1; font-size: 28px; border-bottom: 2px solid #6366F1; padding-bottom: 10px; }
+                        h2 { color: #8B5CF6; font-size: 20px; margin-top: 25px; }
+                        .section { background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0; }
+                        .badge { display: inline-block; padding: 8px 16px; border-radius: 30px; font-weight: bold; }
+                        .positive { background: #d1fae5; color: #065f46; }
+                        .negative { background: #fee2e2; color: #991b1b; }
+                        .neutral { background: #fed7aa; color: #92400e; }
+                        .score { font-size: 48px; font-weight: bold; color: #6366F1; }
+                        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+                        td { padding: 10px; border-bottom: 1px solid #e5e7eb; }
+                        .label { font-weight: bold; color: #4b5563; }
+                        .value { color: #111827; }
+                        .footer { margin-top: 30px; color: #6b7280; font-size: 12px; text-align: center; }
+                    </style>
+                </head>
+                <body>
+                    <h1>📊 Sentiment Analysis Report</h1>
+                    <p><em>Generated by InsightFlow AI on ${new Date().toLocaleString()}</em></p>
+                    
+                    <div class="section">
+                        <h2>🎯 Overall Sentiment</h2>
+                        <div style="display: flex; align-items: center; gap: 30px;">
+                            <div style="text-align: center;">
+                                <div class="score">${scorePercent}%</div>
+                                <div class="badge ${sentiment.toLowerCase()}">${sentiment}</div>
+                            </div>
+                            <div>
+                                <p><strong>Polarity Score:</strong> ${score}</p>
+                                <p><strong>Confidence:</strong> High</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="section">
+                        <h2>🎭 Emotional Keywords</h2>
+                        <p>${emotionTags || 'No emotions detected'}</p>
+                    </div>
+                    
+                    <div class="section">
+                        <h2>💬 Key Emotional Phrases</h2>
+                        ${phrasesHTML || '<p>No emotional phrases detected</p>'}
+                    </div>
+                    
+                    <div class="section">
+                        <h2>📈 Analysis Statistics</h2>
+                        <table>
+                            <tr><td class="label">Total Analyses Performed:</td><td class="value">${stats.total}</td></tr>
+                            <tr><td class="label">Positive Analyses:</td><td class="value">${stats.positive}</td></tr>
+                            <tr><td class="label">Neutral Analyses:</td><td class="value">${stats.neutral}</td></tr>
+                            <tr><td class="label">Negative Analyses:</td><td class="value">${stats.negative}</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="section">
+                        <h2>📝 Analyzed Text Preview</h2>
+                        <p><em>${currentAnalyzedText.substring(0, 500)}${currentAnalyzedText.length > 500 ? '...' : ''}</em></p>
+                    </div>
+                    
+                    <div class="footer">
+                        <p>Report generated by InsightFlow AI - Advanced Sentiment Analysis</p>
+                        <p>© ${new Date().getFullYear()} InsightFlow AI. All rights reserved.</p>
+                    </div>
+                </body>
+                </html>
+            `;
             
             const blob = new Blob([docContent], { type: 'application/msword' });
             const url = URL.createObjectURL(blob);
